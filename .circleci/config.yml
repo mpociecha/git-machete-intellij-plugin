@@ -36,11 +36,11 @@ jobs:
           command: ./scripts/verify-no-string-interpolation-leftovers
       - run:
           name: Run static code analyzer
-          command: ./gradlew --warn checkstyleMain
+          command: ./gradlew --no-daemon --warn checkstyleMain
       - run:
           name: Check Javadoc correctness
           # Given the RAM limits on CI (4GB), max-workers=2 is necessary to prevent OOMs.
-          command: ./gradlew --max-workers=2 javadoc
+          command: ./gradlew --no-daemon --max-workers=2 javadoc
 
 
   backend-tests:
@@ -52,10 +52,10 @@ jobs:
           at: .
       - run:
           name: Compile tests
-          command: ./gradlew compileTestJava
+          command: ./gradlew --no-daemon compileTestJava
       - run:
           name: Run backend tests
-          command: ./gradlew test
+          command: ./gradlew --no-daemon test
       # Unfortunately, wildcards for test result paths aren't supported by CircleCI yet.
       - store_test_results:
           path: branchLayoutImpl/build/test-results/
@@ -72,7 +72,7 @@ jobs:
           at: .
       - run:
           name: Build plugin artifact
-          command: ./gradlew buildPlugin
+          command: ./gradlew --no-daemon --max-workers=2 buildPlugin
       - store_artifacts:
           path: build/distributions/
           destination: .
