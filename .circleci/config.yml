@@ -1,6 +1,6 @@
 version: 2.1
 jobs:
-  build:
+  compilation:
     docker:
       - image: 'gitmachete/intellij-plugin-ci:1.0.0'
     working_directory: ~/git-machete-intellij-plugin
@@ -19,6 +19,18 @@ jobs:
           name: Compile production code
           # Given the RAM limits on CI (4GB), max-workers=2 is necessary to prevent OOMs.
           command: ./gradlew --max-workers=2 compileJava
+      - persist_to_workspace:
+          root: .
+          paths: [ '*' ]
+
+
+  code-analize:
+    docker:
+      - image: 'gitmachete/intellij-plugin-ci:1.0.0'
+    working_directory: ~/git-machete-intellij-plugin
+    steps:
+      - attach_workspace:
+          at: .
       - run:
           name: Run post-compile checks
           command: ./scripts/verify-no-string-interpolation-leftovers
@@ -30,6 +42,14 @@ jobs:
           # Given the RAM limits on CI (4GB), max-workers=2 is necessary to prevent OOMs.
           command: ./gradlew --max-workers=2 javadoc
 
+
+  backend-tests:
+    docker:
+      - image: 'gitmachete/intellij-plugin-ci:1.0.0'
+    working_directory: ~/git-machete-intellij-plugin
+    steps:
+      - attach_workspace:
+          at: .
       - run:
           name: Compile tests
           command: ./gradlew compileTestJava
@@ -42,12 +62,32 @@ jobs:
       - store_test_results:
           path: backendImpl/build/test-results/
 
+
+  build-plugin-artifact:
+    docker:
+      - image: 'gitmachete/intellij-plugin-ci:1.0.0'
+    working_directory: ~/git-machete-intellij-plugin
+    steps:
+      - attach_workspace:
+          at: .
       - run:
           name: Build plugin artifact
           command: ./gradlew buildPlugin
       - store_artifacts:
           path: build/distributions/
           destination: .
+      - persist_to_workspace:
+          root: .
+          paths: [ '*' ]
+
+
+  verify-plugin-artifact:
+    docker:
+      - image: 'gitmachete/intellij-plugin-ci:1.0.0'
+    working_directory: ~/git-machete-intellij-plugin
+    steps:
+      - attach_workspace:
+          at: .
       - run:
           name: Verify plugin artifact contents
           command: ./scripts/verify-artifact-contents
@@ -55,24 +95,33 @@ jobs:
           name: Verify binary compatibility with supported IntelliJ versions
           command: ./scripts/verify-binary-compatibility
 
+  ui-tests-2020_1:
+    docker:
+      - image: 'gitmachete/intellij-plugin-ci:1.0.0'
+    working_directory: ~/git-machete-intellij-plugin
+    steps:
+      - attach_workspace:
+          at: .
       - run:
           name: Run UI tests against 2020.1 (earliest supported)
           command: ./scripts/run-ui-tests 2020.1
-      # Skipping 2020.1.4 to speed up the build; the risk of 2020.1.x failing when both 2020.1 & 2020.2 pass is minuscule.
+
+
+  # Skipping 2020.1.4 to speed up the build; the risk of 2020.1.x failing when both 2020.1 & 2020.2 pass is minuscule.
+
+
+  ui-tests-2020_2:
+    docker:
+      - image: 'gitmachete/intellij-plugin-ci:1.0.0'
+    working_directory: ~/git-machete-intellij-plugin
+    steps:
+      - attach_workspace:
+            at: .
       - run:
           name: Run UI tests against 2020.2 (latest stable & our build target)
           command: ./scripts/run-ui-tests 2020.2
       - store_test_results:
           path: uiTests/build/ui-test-results/
-
-      - when:
-          # No point persisting the project directory to workspace if the `release` job is not going to be executed.
-          condition:
-            equal: [ master, << pipeline.git.branch >> ]
-          steps:
-            - persist_to_workspace:
-                root: .
-                paths: ['*']
 
 
   release:
@@ -126,10 +175,25 @@ workflows:
   version: 2
   workflow:
     jobs:
-      - build
+      - compilation
+
+      - code-analize:
+          requires: [compilation]
+      - backend-tests:
+          requires: [compilation]
+      - build-plugin-artifact:
+          requires: [compilation]
+
+      - verify-plugin-artifact:
+          requires: [build-plugin-artifact]
+      - ui-tests-2020_1:
+          requires: [build-plugin-artifact]
+      - ui-tests-2020_2:
+          requires: [ build-plugin-artifact ]
+
       - hold: # A job that will require manual approval in the CircleCI web application.
           type: approval
-          requires: [build]
+          requires: [code-analize, backend-tests, verify-plugin-artifact, ui-tests-2020_1, ui-tests-2020_2]
           filters:
             branches:
               only: master
