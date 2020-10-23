@@ -90,7 +90,7 @@ public class GitMacheteRepository implements IGitMacheteRepository {
       String localBranchName) throws GitMacheteException {
     LOG.startTimer().debug(() -> "Entering: localBranchName = ${localBranchName}");
     try {
-      var aux = new Aux(gitCoreRepository);
+      var aux = new BaseAux(gitCoreRepository);
       var result = aux.inferParentForLocalBranch(eligibleLocalBranchNames, localBranchName);
       LOG.withTimeElapsed().info("Finished");
       return result;
@@ -114,7 +114,7 @@ public class GitMacheteRepository implements IGitMacheteRepository {
   }
 
   @CustomLog
-  private static class Aux {
+  private static class BaseAux {
     protected final IGitCoreRepository gitCoreRepository;
     protected final List<IGitCoreLocalBranchSnapshot> localBranches;
     protected final Map<String, IGitCoreLocalBranchSnapshot> localBranchByName;
@@ -122,7 +122,7 @@ public class GitMacheteRepository implements IGitMacheteRepository {
     private final java.util.Map<IGitCoreBranchSnapshot, List<IGitCoreReflogEntry>> filteredReflogByBranch = new java.util.HashMap<>();
     private @MonotonicNonNull Map<IGitCoreCommitHash, Seq<IBranchReference>> branchesContainingGivenCommitInReflog;
 
-    Aux(IGitCoreRepository gitCoreRepository) throws GitCoreException {
+    BaseAux(IGitCoreRepository gitCoreRepository) throws GitCoreException {
       this.gitCoreRepository = gitCoreRepository;
       this.localBranches = gitCoreRepository.deriveAllLocalBranches();
       this.localBranchByName = localBranches.toMap(localBranch -> Tuple.of(localBranch.getName(), localBranch));
@@ -289,7 +289,7 @@ public class GitMacheteRepository implements IGitMacheteRepository {
   }
 
   @CustomLog
-  private static class CreateGitMacheteRepositoryAux extends Aux {
+  private static class CreateGitMacheteRepositoryAux extends BaseAux {
 
     private final StatusBranchHookExecutor statusHookExecutor;
     private final PreRebaseHookExecutor preRebaseHookExecutor;
@@ -560,11 +560,28 @@ public class GitMacheteRepository implements IGitMacheteRepository {
           .map(commit -> {
             var containingBranches = deriveBranchesContainingGivenCommitInReflog()
                 .getOrElse(commit.getHash(), List.empty())
-                .reject(candidateBranch -> {
-                  ILocalBranchReference correspondingLocalBranch = candidateBranch.isLocal()
-                      ? candidateBranch.asLocal()
-                      : candidateBranch.asRemote().getTrackedLocalBranch();
-                  return correspondingLocalBranch.getName().equals(branch.getName());
+                .filter(candidateBranchRef -> {
+                  ILocalBranchReference localBranchCorrespondingToCandidateRef = candidateBranchRef.isLocal()
+                      ? candidateBranchRef.asLocal()
+                      : candidateBranchRef.asRemote().getTrackedLocalBranch();
+                  if (localBranchCorrespondingToCandidateRef.getName().equals(branch.getName())) {
+                    return false;
+                  }
+
+                  var localBranchCorrespondingToCandidate = localBranchByName.get(candidateBranchRef.getName()).getOrNull();
+                  if (localBranchCorrespondingToCandidate == null) {
+                    // Unlikely to happen since `localBranchByName` should contain all local branches.
+                    return false;
+                  }
+
+                  boolean candidateMergedToThisBranch = Try.of(() -> gitCoreRepository.isAncestor(
+                      /* presumedAncestor */ localBranchCorrespondingToCandidate,
+                      /* presumedDescendant */ branch)).getOrElse(false);
+                  if (candidateMergedToThisBranch) {
+                    return false;
+                  }
+
+                  return true;
                 });
             return Tuple.of(commit, containingBranches);
           })

@@ -25,6 +25,11 @@ public interface IGitCoreRepository {
 
   boolean isAncestor(IGitCoreCommit presumedAncestor, IGitCoreCommit presumedDescendant) throws GitCoreException;
 
+  default boolean isAncestor(IGitCoreBranchSnapshot presumedAncestor, IGitCoreBranchSnapshot presumedDescendant)
+      throws GitCoreException {
+    return isAncestor(presumedAncestor.getPointedCommit(), presumedDescendant.getPointedCommit());
+  }
+
   Stream<IGitCoreCommit> ancestorsOf(IGitCoreCommit commitInclusive) throws GitCoreException;
 
   List<IGitCoreCommit> deriveCommitRange(IGitCoreCommit fromInclusive, IGitCoreCommit untilExclusive) throws GitCoreException;
