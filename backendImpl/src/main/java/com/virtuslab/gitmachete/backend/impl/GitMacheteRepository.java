@@ -818,20 +818,18 @@ public class GitMacheteRepository implements IGitMacheteRepository {
         throws GitCoreException, GitMacheteException {
 
       List<String> localBranchNames = localBranches.map(lb -> lb.getName());
-      List<String> fixedRootBranchNames;
-      List<String> nonFixedRootBranchNames;
+      List<String> fixedRootBranchNames = List.empty();
+      List<String> nonFixedRootBranchNames = localBranchNames;
       if (localBranchNames.contains(MASTER)) {
-        fixedRootBranchNames = List.of(MASTER);
-        nonFixedRootBranchNames = localBranchNames.reject(Predicate.isEqual(MASTER));
+        fixedRootBranchNames = fixedRootBranchNames.append(MASTER);
+        nonFixedRootBranchNames = nonFixedRootBranchNames.remove(MASTER);
       } else if (localBranchNames.contains(MAIN)) {
-        fixedRootBranchNames = List.of(MAIN);
-        nonFixedRootBranchNames = localBranchNames.reject(Predicate.isEqual(MAIN));
-      } else if (localBranchNames.contains(DEVELOP)) {
-        fixedRootBranchNames = List.of(DEVELOP);
-        nonFixedRootBranchNames = localBranchNames.reject(Predicate.isEqual(DEVELOP));
-      } else {
-        fixedRootBranchNames = List.empty();
-        nonFixedRootBranchNames = localBranchNames;
+        fixedRootBranchNames = fixedRootBranchNames.append(MAIN);
+        nonFixedRootBranchNames = nonFixedRootBranchNames.remove(MAIN);
+      }
+      if (localBranchNames.contains(DEVELOP)) {
+        fixedRootBranchNames = fixedRootBranchNames.append(DEVELOP);
+        nonFixedRootBranchNames = nonFixedRootBranchNames.remove(DEVELOP);
       }
       List<String> freshNonFixedRootBranchNames;
 
